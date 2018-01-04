@@ -13,7 +13,6 @@
 //   limitations under the License.
 
 extern crate atom;
-extern crate time;
 
 use std::sync::atomic::AtomicUsize;
 use std::thread;
@@ -24,8 +23,9 @@ use std::sync::atomic::Ordering;
 use std::cell::RefCell;
 
 use atom::*;
-use time::precise_time_s;
 use fnbox::FnBox;
+
+use std::time::{Duration,Instant};
 
 pub use select::{Select, SelectMap};
 pub use barrier::Barrier;
@@ -517,17 +517,17 @@ impl Scheduler for ThreadScheduler {
     }
 
     fn wait_timeout_ms(&self, signal: Signal, ms: u32) -> Result<(), TimeoutError> {
-        let mut now = (precise_time_s() * 1000.) as u64;
-        let end = now + ms as u64;
+        let now = Instant::now();
+        let total = Duration::from_millis(ms as _);
 
         loop {
             let id = signal.add_to_waitlist(Waiting::thread());
             if signal.is_pending() {
-                now = (precise_time_s() * 1000.) as u64;
-                if now > end {
+                let elapsed = now.elapsed();
+                if elapsed > total {
                     return Err(TimeoutError::Timeout);
                 }
-                thread::park_timeout_ms((end - now) as u32);
+                thread::park_timeout(total - elapsed);
             }
             signal.remove_from_waitlist(id);
 
